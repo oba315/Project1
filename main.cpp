@@ -147,7 +147,7 @@ int main(void) {
 	//- - - - - - ƒƒbƒVƒ…“Ç‚İ‚İ- - - - - - - - - 
 	MyObject sphere(mesh_dir_path + "sphere.obj", false);
 	sphere.mat.transparency = 0.8;
-	sphere.mat.IOR = 1.0;
+	sphere.mat.IOR = 1.3;
 	myscene.add_object_to_scene(sphere);
 
 	//sphere.print_info();
