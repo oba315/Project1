@@ -36,6 +36,8 @@ private:
 	typedef struct {
 		double transparency = 0;	// “§‰ß“x:0‚Å”ñ“§‰ß
 		double IOR = 1;				// ‹üÜ—¦
+
+		double reflectivity = 0;	// ”½Ë—¦:0‚Å”½Ë–³‚µ
 	}MyMaterial;
 
 	int index = -1;

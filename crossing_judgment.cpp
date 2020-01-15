@@ -123,8 +123,9 @@ void inflection_crossing_judgement(
 	if (rayhit.hit.geomID != RTC_INVALID_GEOMETRY_ID) {
 
 		Colorub col;
-
 		int obj_id = myscene.geomID_to_objectID(rayhit.hit.geomID);
+		MyObject* obj = &myscene.object[obj_id];
+				
 
 		if (!(myscene.object[obj_id].has_texture)) {
 			col = myscene.object[obj_id].color;
@@ -137,7 +138,7 @@ void inflection_crossing_judgement(
 		mix(pixel_color, col, transparency);
 
 		// 屈折の考慮
-		if (myscene.object[obj_id].mat.transparency != 0) {
+		if ((*obj).mat.transparency != 0) {
 			inflection_crossing_judgement(
 				pixel_color,			//return
 				rayhit,
@@ -145,9 +146,10 @@ void inflection_crossing_judgement(
 				obj_id
 			);
 		}
+		
 	}
 	else {
-		Colorub bg = COL_BLACK;
+		Colorub bg = COL_BACKGOUND;
 		mix(pixel_color, bg, transparency);
 	}
 	//std::cout << "R" << std::endl;
@@ -155,6 +157,88 @@ void inflection_crossing_judgement(
 
 
 
+// 反射時の交点計算
+// 反射後の2回目以降の交点計算はここで行う。
+// 現在屈折とは(正確には)両立できない。
+void reflection_crossing_judgement(
+			Colorub& pixel_color,			//return
+			RTCRayHit& prev_ray, 
+			RTCScene& scene, MyScene& myscene, 
+			int prev_obj_id)
+{
+	double reflectivity = myscene.object[prev_obj_id].mat.reflectivity;
+	
+	// 新しいRAYを定義
+	struct RTCRayHit rayhit;
+
+	// レイの始点 
+	rayhit.ray.org_x = prev_ray.ray.org_x + (prev_ray.ray.tfar * prev_ray.ray.dir_x);
+	rayhit.ray.org_y = prev_ray.ray.org_y + (prev_ray.ray.tfar * prev_ray.ray.dir_y);
+	rayhit.ray.org_z = prev_ray.ray.org_z + (prev_ray.ray.tfar * prev_ray.ray.dir_z);
+
+	// 法線の取得
+	Vector3 nom =  get_normal(prev_ray, myscene, prev_obj_id);
+
+	// ------- 反射した視線の計算 -------------------------------------------------------
+	Vector3 view(prev_ray.ray.dir_x, prev_ray.ray.dir_y, prev_ray.ray.dir_z);	
+	view.normalize();
+
+	Vector3 R; // 反射した視線
+	R = view - (2. * (view.dot(nom)) * nom);
+	// -----------------------------------------------------------------------------------
+	
+	rayhit.ray.dir_x = R.x;
+	rayhit.ray.dir_y = R.y;
+	rayhit.ray.dir_z = R.z;
+
+	// 交差判定する範囲を指定 
+	rayhit.ray.tnear = 0.001f;     // 範囲の始点 //屈折率１の時0.0だとエラー
+
+	struct RTCIntersectContext context;
+	rtcInitIntersectContext(&context);
+
+	rayhit.ray.flags = false;
+	rayhit.hit.geomID = RTC_INVALID_GEOMETRY_ID;
+	rayhit.ray.tfar = INFINITY;
+
+	// 交差判定
+	rtcIntersect1(scene, &context, &rayhit);
+	//std::cout <<"h" <<rayhit.hit.geomID;
+
+	if (rayhit.hit.geomID != RTC_INVALID_GEOMETRY_ID) {
+
+		Colorub col;
+		int obj_id = myscene.geomID_to_objectID(rayhit.hit.geomID);
+		MyObject* obj = &myscene.object[obj_id];
+				
+
+		if (!((*obj).has_texture)) {
+			col = myscene.object[obj_id].color;
+		}
+		else {
+			col = calc_color_with_texture(rayhit, myscene, obj_id);
+		}
+
+		//　色をミックス
+		mix(pixel_color, col, reflectivity);
+
+		// 再度反射の考慮
+		if ((*obj).mat.reflectivity != 0) {
+			reflection_crossing_judgement(
+				pixel_color,			//return
+				rayhit,
+				scene, myscene,
+				obj_id
+			);
+		}
+		
+	}
+	else {
+		Colorub bg = COL_BACKGOUND;
+		mix(pixel_color, bg, reflectivity);
+	}
+	//std::cout << "R" << std::endl;
+}
 
 // テクスチャがある場合の輝度計算
 Colorub calc_color_with_texture(RTCRayHit &rayhit, MyScene &myscene, int obj_id) {
@@ -232,6 +316,7 @@ bool crossing_judgement(Image& image, RTCScene& scene, MyScene myscene) {
 			if (rayhit.hit.geomID != RTC_INVALID_GEOMETRY_ID) {
 				
 				int obj_id = myscene.geomID_to_objectID(rayhit.hit.geomID);
+				MyObject* obj = &myscene.object[obj_id];
 
 				if (!(myscene.object[obj_id].has_texture)) {
 					pixel_color = myscene.object[obj_id].color;
@@ -241,7 +326,7 @@ bool crossing_judgement(Image& image, RTCScene& scene, MyScene myscene) {
 				}
 								
 				// 屈折の考慮
-				if (myscene.object[obj_id].mat.transparency != 0) {
+				if ((*obj).mat.transparency != 0) {
 					inflection_crossing_judgement(
 						pixel_color,			
 						rayhit,
@@ -249,6 +334,16 @@ bool crossing_judgement(Image& image, RTCScene& scene, MyScene myscene) {
 						obj_id
 					);
 				}	
+				// 反射の考慮
+				// とりあえず、反射と屈折は両立できない。
+				if ((*obj).mat.reflectivity != 0) {
+					reflection_crossing_judgement(
+						pixel_color,
+						rayhit,
+						scene, myscene,
+						obj_id
+					);
+				}
 			}
 			else {
 				pixel_color = COL_BACKGOUND;
